@@ -1,0 +1,402 @@
+package edu.berkeley.path.ora_navteq_probe_raw;
+
+import java.util.ArrayList;
+import java.net.Socket;
+import java.net.InetSocketAddress;
+import java.io.IOException;
+import java.io.DataInputStream;
+import java.util.*;
+import java.sql.*;
+
+
+
+public class probeReader {
+
+  private static Socket lsnrSocket = null ;
+  private static DataInputStream probeData = null ;
+  private static InetSocketAddress navteq ;
+  private static Connection oraDB = null ;
+  private static int longestString = 0 ;
+  private static Boolean setDebug = false ;
+  private static int procRes = 0 ;
+  private static int count = 0 ;
+  private static int waitStates = 0 ;
+
+  private static  String DBConnectString = "jdbc:oracle:thin:";
+  private static  String DBIPAddress = "ccoradb.path.berkeley.edu";
+  private static  String DBPortNumber = "1521";
+  private static  String DBInstance = "via" ;
+  private static  String DBUserName = "bill" ;
+  private static  String DBPassword = "krmjvbob" ;
+  
+
+  public static class NavteqRecord{
+
+	static int	rmob_name ;
+	static int	rmob_version ;
+	static int	link_set_version ;
+	static int	server_time ; 
+	static int	measure_dt ;
+	static int	longitude ;
+	static int	latitude ;
+	static int	heading ;
+	static int	speed ;
+	static int	mapped_flag ;
+	static long	link_id ;
+	static int	link_offset ;
+	static int	heading_offset ;
+	static int	lanes_to_from ;
+	static int	functional_class ;
+	static int	percent_from_ref ;
+	static int	time_zone_offset ;
+	static long	ref_loc ;
+	static long	nonref_loc ;
+	static int	accuracy_radius ;
+	static int 	hdop ;
+	static int 	satellites ;
+	static int 	probe_data_prov_desc_type ;
+	static String	probe_data_provider_name ;
+	static int	probe_id_type ;
+	static String	probe_id_size ;
+	static int	tmc_code_type ;
+	static String	tmc_codes ;
+	static String	tables_ids ;
+  }
+
+
+  /** Read a string of size from stream. */
+  private static String readString( int size ) throws IOException {
+
+     StringBuilder sb = new StringBuilder();
+
+	if(size > longestString) longestString += size ;
+
+        while( 0 < size ) {
+            size--;
+            sb.append( (char) probeData.readUnsignedByte() );
+        }
+
+        return sb.toString();
+   }
+
+
+private static Connection OraConnect(String uname,String upass) throws SQLException {
+
+	try{
+		DriverManager.registerDriver(new oracle.jdbc.driver.OracleDriver());
+		return DriverManager.getConnection(DBConnectString + uname + "/" + upass + "@" + DBIPAddress + ":" + DBPortNumber + ":" + DBInstance);
+	} catch (SQLException e){
+		System.out.println(e.getMessage());
+		return null;
+	}          
+}
+
+
+
+public static void printProbeRaw(){
+
+   try{
+
+      System.out.println("");
+      System.out.println(probeData.readInt());	    
+      System.out.println(probeData.readInt());	
+      System.out.println(probeData.readShort());
+      System.out.println(probeData.readInt());	
+      System.out.println(probeData.readInt());	
+      System.out.println(probeData.readInt());	
+      System.out.println(probeData.readInt());	
+      System.out.println(probeData.readInt());	
+      System.out.println(probeData.readInt());	
+      System.out.println(probeData.readByte());	
+      System.out.println(probeData.readLong());	
+      System.out.println(probeData.readInt());	
+      System.out.println(probeData.readInt());	
+      System.out.println(probeData.readByte());	
+      System.out.println(probeData.readByte());	
+      System.out.println(probeData.readByte());	
+      System.out.println(probeData.readByte());	
+      System.out.println(probeData.readLong());	
+      System.out.println(probeData.readLong());	
+      System.out.println(probeData.readInt());	
+      System.out.println(probeData.readInt());	
+      System.out.println(probeData.readInt());	
+      System.out.println(probeData.readByte()); //probe_data_provid
+      System.out.println(readString(probeData.readUnsignedByte()));
+      System.out.println(probeData.readByte()); //PROBE_ID TYPE
+      System.out.println(readString(probeData.readUnsignedByte()));
+      System.out.println(probeData.readByte()); //TMC_CODES TYPE
+      System.out.println(readString(probeData.readUnsignedByte()));
+      System.out.println(readString(probeData.readUnsignedByte()));
+   }catch(IOException e){}
+}
+
+
+public static boolean dataAvailable(){
+
+  try{
+
+    if( probeData.available() > 250 ){
+
+	return true;
+
+     }else{
+
+       return false ;
+      }
+
+  }catch(IOException e){
+
+      System.out.println("Error on Data Availability Count = " + (e.getMessage()) );
+      return false ;
+  }
+ }
+
+
+
+  public static boolean writeProbeData() {    
+
+    if( dataAvailable() && getProbeSocketData()){
+
+      try{
+
+	
+
+	CallableStatement oraProc = oraDB.prepareCall("{ call VIA.SP_SAVE_PROBES_RAW(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) }");
+	oraProc.setLong(1,NavteqRecord.rmob_name) ;
+	oraProc.setInt(2,NavteqRecord.rmob_version) ;
+	oraProc.setInt(3,NavteqRecord.link_set_version) ;
+	oraProc.setInt(4,NavteqRecord.server_time) ; 
+	oraProc.setInt(5,NavteqRecord.measure_dt) ;
+	oraProc.setInt(6,NavteqRecord.latitude) ;
+	oraProc.setInt(7,NavteqRecord.longitude) ;
+	oraProc.setInt(8,NavteqRecord.heading) ;
+	oraProc.setInt(9,NavteqRecord.speed) ;
+	oraProc.setInt(10,NavteqRecord.mapped_flag) ;
+	oraProc.setLong(11,NavteqRecord.link_id) ;
+	oraProc.setInt(12,NavteqRecord.link_offset) ;
+	oraProc.setInt(13,NavteqRecord.heading_offset) ;
+	oraProc.setInt(14,NavteqRecord.lanes_to_from) ;
+	oraProc.setInt(15,NavteqRecord.functional_class) ;
+	oraProc.setInt(16,NavteqRecord.percent_from_ref) ;
+	oraProc.setInt(17,NavteqRecord.time_zone_offset) ;
+	oraProc.setLong(18,NavteqRecord.ref_loc) ;
+	oraProc.setLong(19,NavteqRecord.nonref_loc) ;
+	oraProc.setInt(20,NavteqRecord.accuracy_radius) ;
+	oraProc.setInt(21,NavteqRecord.hdop) ;
+	oraProc.setInt(22,NavteqRecord.satellites) ;
+	oraProc.setInt(23,NavteqRecord.probe_data_prov_desc_type);
+	oraProc.setString(24,NavteqRecord.probe_data_provider_name);
+	oraProc.setInt(25,NavteqRecord.probe_id_type) ;
+	oraProc.setString(26,NavteqRecord.probe_id_size) ;
+	oraProc.setInt(27,NavteqRecord.tmc_code_type) ;
+	oraProc.setString(28,NavteqRecord.tmc_codes) ;
+	oraProc.setString(29,NavteqRecord.tables_ids) ;
+
+	// Setup the retun code
+	oraProc.registerOutParameter(30,java.sql.Types.INTEGER);
+
+	//System.out.println("Finished moving the fields");	
+
+	oraProc.execute();
+      
+	procRes =  oraProc.getInt(30);
+
+	oraProc.close();
+
+      } catch(SQLException e){
+
+	  System.out.println("Error on OraWrite Message = " + (e.getMessage()) + "Stack Trace Follows...");
+	  e.printStackTrace();
+	  return false ;
+
+	 }
+
+	return true ;
+
+    }
+
+    return false ;
+
+}
+
+
+    public static void ProbeSocketSetup(){
+
+      try{
+
+	navteq 		= new InetSocketAddress("probefeed.traffic.com",58809);
+        lsnrSocket 	= new Socket();
+	lsnrSocket.setSoTimeout(60);
+	lsnrSocket.setKeepAlive(true);
+	lsnrSocket.setSoLinger(false,0);
+	lsnrSocket.setReuseAddress( true );
+	lsnrSocket.setReceiveBufferSize(1024*1024*1024 / 2);
+	
+      } catch(Exception e){System.out.println("Error on socket Setup "+e.getMessage());}
+
+    }
+
+
+    public static void probeConnect(){
+
+	try{
+
+	  ProbeSocketSetup() ;
+
+	  lsnrSocket.connect(navteq,5000);
+
+	  System.out.println("Connection = "+ lsnrSocket.isConnected() );
+
+	  probeData = new DataInputStream(lsnrSocket.getInputStream());
+
+	} catch(Exception e){System.out.println("Error on socket connect "+e.getMessage());}
+
+    }
+
+
+public static void probeConnectorClose(){
+
+ try{
+   probeData.close();
+   probeData = null ;
+   lsnrSocket.close();
+   lsnrSocket = null ;
+
+ } catch(Exception e){System.out.println("Error on socket close "+e.getMessage());}
+    
+}
+
+
+    public static void cycleProbeSocket(){
+
+	try{
+	    System.out.println("Attempting to close the socket...");	    
+	    probeConnectorClose();
+	    //System.out.println("Connection status = "+ lsnrSocket.isConnected() );
+	    doWait(1000);
+	    probeConnect();
+
+	}catch(Exception e){System.out.println("Error on socket cycle "+e.getMessage());}
+    }
+
+
+
+    public static boolean getProbeSocketData(){
+
+      try{
+
+	 
+	      NavteqRecord.rmob_name		= probeData.readInt();		// rmob_name
+	      NavteqRecord.rmob_version		= probeData.readInt();		// rmob_version
+	      NavteqRecord.link_set_version	= probeData.readShort();	// link_set_version
+	      NavteqRecord.server_time		= probeData.readInt();		// server time           
+	      NavteqRecord.measure_dt		= probeData.readInt();		// sample date
+	      NavteqRecord.latitude		= probeData.readInt();		// latitude
+	      NavteqRecord.longitude		= probeData.readInt();		// logintude
+	      NavteqRecord.heading		= probeData.readInt();		// heading           
+	      NavteqRecord.speed		= probeData.readInt();		// Speed
+	      NavteqRecord.mapped_flag		= probeData.readByte();		// mapped_flag
+	      NavteqRecord.link_id		= probeData.readLong();		// link_id 
+	      NavteqRecord.link_offset		= probeData.readInt();		// link_offset     
+	      NavteqRecord.heading_offset	= probeData.readInt();		// heading_offset        
+	      NavteqRecord.lanes_to_from	= probeData.readByte();		// lanes_to_from       
+	      NavteqRecord.functional_class	= probeData.readByte();		// funcional_class          
+	      NavteqRecord.percent_from_ref	= probeData.readByte();		// percent_from_ref          
+	      NavteqRecord.time_zone_offset	= probeData.readByte();		// time_zone_offset          
+	      NavteqRecord.ref_loc		= probeData.readLong();		// ref_loc 
+	      NavteqRecord.nonref_loc		= probeData.readLong();		// nonref_loc    
+	      NavteqRecord.accuracy_radius	= probeData.readInt();		// accuracy_radius         
+	      NavteqRecord.hdop			= probeData.readInt();		// hdop
+	      NavteqRecord.satellites		= probeData.readInt();		// satellites
+
+	      NavteqRecord.probe_data_prov_desc_type 	= probeData.readByte(); //probe_data_provider_desc type
+	      NavteqRecord.probe_data_provider_name	= readString(probeData.readUnsignedByte());
+
+	      NavteqRecord.probe_id_type	= probeData.readByte(); //PROBE_ID TYPE
+	      NavteqRecord.probe_id_size	= readString(probeData.readUnsignedByte());
+	      NavteqRecord.tmc_code_type	= probeData.readByte(); //TMC_CODES TYPE
+	      NavteqRecord.tmc_codes		= readString(probeData.readUnsignedByte());
+	      NavteqRecord.tables_ids		= readString(probeData.readUnsignedByte());
+	      
+	    }catch(Exception e){
+		//System.out.println("Error While Moving socket Data "+e.getMessage());
+		// this will triger on a time out for the read so we simply return false;
+		return false;
+	    }
+      return true ;
+    }
+
+
+  public static void doWait(int period){
+
+
+    try{
+
+	java.util.concurrent.TimeUnit.MILLISECONDS.sleep((long) period );
+
+    }catch(InterruptedException e){System.out.println("Error executing a wait! Halting "+e.getMessage()); System.exit(1);}
+
+  }
+
+
+
+  public static void main(String[] args){
+
+
+	DBConnectString = System.getProperty("dbconnstr","jdbc:oracle:thin:");
+	DBIPAddress = System.getProperty("dbsdd","ccoradb.path.berkeley.edu");
+	DBPortNumber = System.getProperty("dbport","1521");
+	DBInstance = System.getProperty("dbinst","via") ;
+	DBUserName = System.getProperty("dbuser",null) ;
+	DBPassword = System.getProperty("dbpass",null) ;
+
+
+	//dbs = new DatabaseWriter() ;
+//      Monitor.mon("New Probe Reader Starting!");
+//      Monitor.mon("d1 = " + DBUserName);
+
+
+	try{oraDB = OraConnect(DBUserName,DBPassword);}catch(SQLException e){
+	System.out.println(e.getMessage());}
+
+//Monitor.out("Oracle up and running...");
+
+      try{
+	  ProbeSocketSetup();
+      } catch (Exception e){}
+
+//Monitor.out("Trying to connect to Navteq");
+   
+      probeConnect();
+                
+    
+       
+        while( true ) {
+
+             // Monitor.mon("Reading and writing probe data...");
+	      System.out.print("O");	      
+
+	      if( writeProbeData() ){
+
+		System.out.print("+");
+		waitStates = 0 ;
+
+	      }else{
+
+		  waitStates++ ;
+		  System.out.print("-");
+		  doWait(5000);
+	      }
+
+	      // too many waitstates discouunect and re-connect.
+	      if (waitStates > 12 ){
+
+		  System.out.println("Too many waitstates...  Hanging up and re-dialing.");
+		  System.out.print("x");  
+		  cycleProbeSocket();
+		  waitStates = 0 ;    
+                }
+       }
+  }
+
+}

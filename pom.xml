@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  
+  <parent>
+    <groupId>edu.berkeley.path</groupId>
+    <artifactId>CC</artifactId>
+    <version>0.1-SNAPSHOT</version>
+  </parent>
+
+  <modelVersion>4.0.0</modelVersion>
+  
+  <artifactId>ora-navteq-probe-raw</artifactId>
+    
+  <name>probeReader</name>
+  
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
+
+<!--
+  <scm>
+    <connection>scm:git:git@github.com:calpath/netConfig.git</connection>
+    <developerConnection>scm:git:git@github.com:calpath/netConfig.git</developerConnection>
+    <url>git@github.com:calpath/netConfig.git</url>
+  </scm>
+  -->
+
+  <dependencies>  
+    <dependency>  
+      <groupId>edu.berkeley.path</groupId>
+      <artifactId>CORE</artifactId>
+      <version>0.1-SNAPSHOT</version>
+    </dependency>  
+  </dependencies>
+</project>
